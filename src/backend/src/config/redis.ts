@@ -5,5 +5,5 @@ dotenv.config();
 
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 
-const redisPublisher = new Redis(redisUrl);
-const redisSubscriber = new Redis(redisUrl);
+export const redisPublisher = new Redis(redisUrl);
+export const redisSubscriber = new Redis(redisUrl);

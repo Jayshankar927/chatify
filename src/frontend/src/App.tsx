@@ -12,8 +12,19 @@ export default function App() {
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
 
+  const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:5000/ws';
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
   useEffect(() => {
-    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:5000/ws';
+    fetch(`${apiUrl}/api/messages`)
+      .then((res) => res.json())
+      .then((data: ChatMessage[]) => {
+        if (Array.isArray(data)) {
+          setMessages(data);
+        }
+      })
+      .catch((err) => console.error('Failed to fetch messages:', err));
+
     const ws = new WebSocket(wsUrl);
     socketRef.current = ws;
 
@@ -38,16 +49,14 @@ export default function App() {
     return () => {
       ws.close();
     };
-  }, []);
+  }, [apiUrl, wsUrl]);
 
   const sendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || !socketRef.current) return;
 
-    const payload: ChatMessage = {
-      id: Date.now().toString(),
-      text: input,
-      timestamp: new Date().toLocaleTimeString()
+    const payload = {
+      text: input
     };
 
     socketRef.current.send(JSON.stringify(payload));
@@ -69,9 +78,11 @@ export default function App() {
           <p className="text-slate-500 text-center mt-10 text-sm">No messages yet. Say hello!</p>
         ) : (
           messages.map((msg) => (
-            <div key={msg.id} className="bg-slate-800 p-3 rounded-lg border border-slate-700 text-sm flex justify-between items-center">
+            <div key={msg.id} className="bg-slate-800 p-3 rounded-lg border border-slate-700 text-sm flex justify-between">
               <span>{msg.text}</span>
-              <span className="text-xs text-slate-500 ml-2">{msg.timestamp}</span>
+              <span className="text-xs text-slate-500 ml-2">
+                {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
             </div>
           ))
         )}

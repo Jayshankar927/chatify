@@ -5,7 +5,14 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import {pool} from './config/db.js';
 import {redisPublisher, redisSubscriber} from './config/redis.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { register, connectedClientsGauge, messagesSentCounter, httpRequestDurationHistogram } from './config/metrics.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
 dotenv.config();
 
 const app = express();
@@ -14,6 +21,27 @@ const CHAT_CHANNEL = "chat_messages";
 
 app.use(cors());
 app.use(express.json());
+
+app.use((req, res, next) => {
+  const start = process.hrtime();
+  res.on('finish', () => {
+    const duration = process.hrtime(start);
+    const durationInSeconds = duration[0] + duration[1] / 1e9;
+    httpRequestDurationHistogram
+      .labels(req.method, req.route ? req.route.path : req.path, res.statusCode.toString())
+      .observe(durationInSeconds);
+  });
+  next();
+});
+
+app.use('/metrics', async (req, res) => {
+  try {
+    res.set('Content-Type', register.contentType);
+    res.end(await register.metrics());
+  } catch (err) {
+    res.status(500).end(err instanceof Error ? err.message : 'Metrics error');
+  }
+});
 
 app.get('/healthz', async (req, res) => {
   try{
@@ -69,6 +97,8 @@ redisSubscriber.on('message', (channel, message) => {
 });
 
 wss.on('connection', (ws: WebSocket) => {
+  connectedClientsGauge.inc();
+
   ws.on('message', async (data: Buffer) => {
     try{
       const parsedData = JSON.parse(data.toString());
@@ -86,10 +116,19 @@ wss.on('connection', (ws: WebSocket) => {
 
       const messagePayload = JSON.stringify(dbResult.rows[0]);
       await redisPublisher.publish(CHAT_CHANNEL, messagePayload);
+      messagesSentCounter.inc();
     } catch (error) {
       console.error('Error handling Websocket message:', error);
       ws.send(JSON.stringify({ error: 'Failed to process message' }));
     }
+  });
+
+  ws.on('close', () => {
+    connectedClientsGauge.dec();
+  });
+
+  ws.on('error', () => {
+    connectedClientsGauge.dec();
   });
 });
 

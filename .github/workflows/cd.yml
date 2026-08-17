@@ -39,3 +39,10 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/chat-frontend:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/chat-frontend:${{ github.sha }}
+
+      - name: Trigger Render Deployment
+        if: env.RENDER_DEPLOY_HOOK != ''
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          curl -X POST "$RENDER_DEPLOY_HOOK"

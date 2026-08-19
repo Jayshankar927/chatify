@@ -7,6 +7,10 @@ import {pool} from './config/db.js';
 import {redisPublisher, redisSubscriber} from './config/redis.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { verifyToken } from './utils/auth.js';
+import { requireAuth } from './middleware/auth.js';
+import { registerHandler, loginHandler, meHandler } from './handlers/auth.js';
+import { searchUsersHandler, getRecentConversationsHandler, getDirectMessagesHandler } from './handlers/users.js';
 import { register, connectedClientsGauge, messagesSentCounter, httpRequestDurationHistogram } from './config/metrics.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -17,7 +21,7 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 5000;
-const CHAT_CHANNEL = "chat_messages";
+const CHAT_CHANNEL = "direct_chat_messages";
 
 app.use(cors());
 app.use(express.json());
@@ -66,19 +70,22 @@ app.get('/healthz', async (req, res) => {
   }
 });
 
-app.get('/api/messages', async (req, res) => {
-  try{
-    const result = await pool.query(
-      'SELECT id, text, created_at AS timestamp FROM messages ORDER BY created_at ASC LIMIT 100'
-    );
-    res.status(200).json(result.rows);
-  } catch (error) {
-    res.status(500).json({error : 'Failed to retrieve messages' });
-  }
-});
+app.post('/api/auth/register', registerHandler);
+app.post('/api/auth/login', loginHandler);
+app.get('/api/auth/me', requireAuth, meHandler);
+app.get('/api/users/search', requireAuth, searchUsersHandler);
+app.get('/api/users/conversations', requireAuth, getRecentConversationsHandler);
+app.get('/api/messages/:userId', requireAuth, getDirectMessagesHandler);
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
+
+interface AuthenticatedWebSocket extends WebSocket {
+  userId?: string;
+  username?: string;
+}
+
+const activeClients = new Map<string, AuthenticatedWebSocket>();
 
 redisSubscriber.subscribe(CHAT_CHANNEL, (err) => {
   if (err) {
@@ -88,30 +95,53 @@ redisSubscriber.subscribe(CHAT_CHANNEL, (err) => {
 
 redisSubscriber.on('message', (channel, message) => {
   if (channel === CHAT_CHANNEL) {
-    wss.clients.forEach((client) => { 
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(message);
-      }
-    });
+    const payload = JSON.parse(message);
+    const targetSocket = activeClients.get(payload.recipient_id);
+    const senderSocket = activeClients.get(payload.sender_id);
+
+    if (targetSocket && targetSocket.readyState === WebSocket.OPEN) {
+      targetSocket.send(message);
+    }
+
+    if (senderSocket && senderSocket.readyState === WebSocket.OPEN && senderSocket !== targetSocket) {
+      senderSocket.send(message);
+    }
   }
 });
 
-wss.on('connection', (ws: WebSocket) => {
+wss.on('connection', (ws: AuthenticatedWebSocket, req) => {
   connectedClientsGauge.inc();
+
+  const url = new URL(req.url || '', `http://${req.headers.host}`);
+  const token = url.searchParams.get('token');
+  
+  if (!token) {
+    ws.close(4001, 'Unauthorized: No token provided');
+    return;
+  }
+
+  const payload = verifyToken(token);
+  if (!payload) {
+    ws.close(4001, 'Unauthorized: Invalid token');
+    return;
+  }
+
+  ws.userId = payload.userId;
+  ws.username = payload.username;
+  activeClients.set(payload.userId, ws);
 
   ws.on('message', async (data: Buffer) => {
     try{
-      const parsedData = JSON.parse(data.toString());
-      const text = parsedData.text;
+      const parsed = JSON.parse(data.toString());
+      const { recipientId, text } = parsed;
 
-      if (!text || typeof text !== 'string') {
-        ws.send(JSON.stringify({ error: 'Invalid message format' }));
-        return;
-      }
+      if (!recipientId || !text || typeof text !== 'string') return;
 
       const dbResult = await pool.query(
-        'INSERT INTO messages (text) VALUES ($1) RETURNING id, text, created_at AS timestamp',
-        [text]
+        `INSERT INTO messages (sender_id, recipient_id, text) 
+         VALUES ($1, $2, $3) 
+         RETURNING id, sender_id, recipient_id, text, created_at AS timestamp`,
+        [ws.userId, recipientId, text]
       );
 
       const messagePayload = JSON.stringify(dbResult.rows[0]);
@@ -124,10 +154,16 @@ wss.on('connection', (ws: WebSocket) => {
   });
 
   ws.on('close', () => {
+    if (ws.userId) {
+      activeClients.delete(ws.userId);
+    }
     connectedClientsGauge.dec();
   });
 
   ws.on('error', () => {
+    if (ws.userId) {
+      activeClients.delete(ws.userId);
+    }
     connectedClientsGauge.dec();
   });
 });

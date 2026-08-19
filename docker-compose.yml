@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -15,7 +13,7 @@ services:
     networks:
       - chat-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB
       interval: 5s
       timeout: 5s
       retries: 5
@@ -24,11 +22,13 @@ services:
     image: redis:7-alpine
     container_name: chat-redis
     restart: always
-    command: redis-server --requirepass ${REDIS_PASSWORD}
+    command: redis-server --requirepass "${REDIS_PASSWORD}"
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
     networks:
       - chat-network
     healthcheck:
-      test: ["CMD-SHELL", "REDISCLI_AUTH=${REDIS_PASSWORD} redis-cli ping | grep PONG"]
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -43,6 +43,7 @@ services:
       PORT: 5000
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${JWT_SECRET}
     ports:
       - "5000:5000"
     networks:
@@ -94,7 +95,7 @@ services:
       GF_USERS_ALLOW_SIGN_UP: false
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - garafana_data:/var/lib/grafana
+      - grafana_data:/var/lib/grafana
     ports:
       - "3000:3000"
     networks:
@@ -105,7 +106,7 @@ services:
 volumes:
   postgres_data:
     driver: local
-  garafana_data:
+  grafana_data:
     driver: local
 
 networks:

@@ -25,16 +25,32 @@ export const ChatDashboard: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
 
   const socketRef = useRef<WebSocket | null>(null);
+  const selectedUserRef = useRef<User | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:5000/ws';
 
   useEffect(() => {
+    selectedUserRef.current = selectedUser;
+  }, [selectedUser]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const loadConversations = () => {
+    if (!token) return;
     fetch(`${apiUrl}/api/users/conversations`, {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then((res) => res.json())
       .then((data) => setConversations(Array.isArray(data) ? data : []))
       .catch((err) => console.error(err));
+  };
+
+  useEffect(() => {
+    loadConversations();
   }, [apiUrl, token]);
 
   useEffect(() => {
@@ -49,18 +65,25 @@ export const ChatDashboard: React.FC = () => {
 
     ws.onmessage = (event) => {
       const msg: Message = JSON.parse(event.data);
+      const currentSelected = selectedUserRef.current;
+
       if (
-        (selectedUser && msg.sender_id === selectedUser.id) ||
-        (selectedUser && msg.recipient_id === selectedUser.id)
+        currentSelected &&
+        (msg.sender_id === currentSelected.id || msg.recipient_id === currentSelected.id)
       ) {
-        setMessages((prev) => [...prev, msg]);
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
       }
+
+      loadConversations();
     };
 
     return () => {
       ws.close();
     };
-  }, [wsUrl, token, selectedUser]);
+  }, [wsUrl, token]);
 
   useEffect(() => {
     if (!selectedUser) return;
@@ -219,6 +242,7 @@ export const ChatDashboard: React.FC = () => {
                   </div>
                 );
               })}
+              <div ref={messagesEndRef} />
             </div>
 
             <form onSubmit={handleSendMessage} className="p-4 border-t border-slate-800 bg-slate-900 flex gap-2">

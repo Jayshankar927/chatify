@@ -14,6 +14,32 @@ interface ConversationUser extends User {
   last_message_time?: string;
 }
 
+const formatDateDivider = (dateString: string): string => {
+  const messageDate = new Date(dateString);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  const isSameDay = (d1: Date, d2: Date) =>
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate();
+
+  if (isSameDay(messageDate, today)) return 'Today';
+  if (isSameDay(messageDate, yesterday)) return 'Yesterday';
+
+  return messageDate.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: messageDate.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
+  });
+};
+
+const formatMessageTime = (dateString: string): string => {
+  const date = new Date(dateString);
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
 export const ChatDashboard: React.FC = () => {
   const { user, token, logout } = useAuth();
   const [conversations, setConversations] = useState<ConversationUser[]>([]);
@@ -219,27 +245,42 @@ export const ChatDashboard: React.FC = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {messages.map((msg) => {
+              {messages.map((msg, index) => {
                 const isMine = msg.sender_id === user?.id;
+                const currentDateDivider = formatDateDivider(msg.timestamp);
+                const prevDateDivider =
+                  index > 0 ? formatDateDivider(messages[index - 1].timestamp) : null;
+                const showDivider = currentDateDivider !== prevDateDivider;
+
                 return (
-                  <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
-                    <div
-                      className={`max-w-md rounded-xl px-4 py-2 text-sm shadow-sm ${
-                        isMine
-                          ? 'bg-indigo-600 text-white rounded-br-none'
-                          : 'bg-slate-800 border border-slate-700 text-slate-200 rounded-bl-none'
-                      }`}
-                    >
-                      <p>{msg.text}</p>
-                      <span
-                        className={`text-[10px] block text-right mt-1 ${
-                          isMine ? 'text-indigo-200' : 'text-slate-500'
+                  <React.Fragment key={msg.id}>
+                    {showDivider && (
+                      <div className="flex items-center justify-center my-4">
+                        <span className="bg-slate-900 border border-slate-800 text-slate-400 text-[11px] font-medium px-3 py-1 rounded-full shadow-sm select-none">
+                          {currentDateDivider}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+                      <div
+                        className={`max-w-md rounded-2xl px-4 py-2 text-sm shadow-sm transition-all ${
+                          isMine
+                            ? 'bg-indigo-600 text-white rounded-br-none'
+                            : 'bg-slate-800 border border-slate-700/80 text-slate-200 rounded-bl-none'
                         }`}
                       >
-                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
+                        <p className="leading-relaxed break-words">{msg.text}</p>
+                        <span
+                          className={`text-[10px] block text-right mt-1 select-none ${
+                            isMine ? 'text-indigo-200' : 'text-slate-500'
+                          }`}
+                        >
+                          {formatMessageTime(msg.timestamp)}
+                        </span>
+                      </div>
                     </div>
-                  </div>
+                  </React.Fragment>
                 );
               })}
               <div ref={messagesEndRef} />

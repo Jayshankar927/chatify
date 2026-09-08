@@ -3,8 +3,8 @@ import http from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import {pool} from './config/db.js';
-import {redisPublisher, redisSubscriber} from './config/redis.js';
+import { pool } from './config/db.js';
+import { redisPublisher, redisSubscriber } from './config/redis.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { verifyToken } from './utils/auth.js';
@@ -48,9 +48,9 @@ app.use('/metrics', async (req, res) => {
 });
 
 app.get('/healthz', async (req, res) => {
-  try{
-    await pool.query('SELECT 1'); // Check database connection
-    await redisPublisher.ping(); // Check Redis connection
+  try {
+    await pool.query('SELECT 1');
+    await redisPublisher.ping();
 
     res.status(200).json({
       status: 'OK',
@@ -59,10 +59,9 @@ app.get('/healthz', async (req, res) => {
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
     });
-  }
-  catch (error) {
+  } catch (error) {
     res.status(503).json({
-      status : 'DEGRADED',
+      status: 'DEGRADED',
       error: error instanceof Error ? error.message : 'Unknown error',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
@@ -114,7 +113,7 @@ wss.on('connection', (ws: AuthenticatedWebSocket, req) => {
 
   const url = new URL(req.url || '', `http://${req.headers.host}`);
   const token = url.searchParams.get('token');
-  
+
   if (!token) {
     ws.close(4001, 'Unauthorized: No token provided');
     return;
@@ -131,10 +130,25 @@ wss.on('connection', (ws: AuthenticatedWebSocket, req) => {
   activeClients.set(payload.userId, ws);
 
   ws.on('message', async (data: Buffer) => {
-    try{
+    try {
       const parsed = JSON.parse(data.toString());
-      const { recipientId, text } = parsed;
 
+      if (parsed.type === 'TYPING_STATUS') {
+        const { recipientId, isTyping } = parsed;
+        if (!recipientId || typeof isTyping !== 'boolean') return;
+
+        const typingPayload = JSON.stringify({
+          type: 'TYPING_STATUS',
+          sender_id: ws.userId,
+          recipient_id: recipientId,
+          isTyping
+        });
+
+        await redisPublisher.publish(CHAT_CHANNEL, typingPayload);
+        return;
+      }
+
+      const { recipientId, text } = parsed;
       if (!recipientId || !text || typeof text !== 'string') return;
 
       const dbResult = await pool.query(
@@ -144,7 +158,11 @@ wss.on('connection', (ws: AuthenticatedWebSocket, req) => {
         [ws.userId, recipientId, text]
       );
 
-      const messagePayload = JSON.stringify(dbResult.rows[0]);
+      const messagePayload = JSON.stringify({
+        type: 'CHAT_MESSAGE',
+        ...dbResult.rows[0]
+      });
+
       await redisPublisher.publish(CHAT_CHANNEL, messagePayload);
       messagesSentCounter.inc();
     } catch (error) {

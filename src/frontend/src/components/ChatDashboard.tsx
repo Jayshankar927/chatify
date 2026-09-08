@@ -213,9 +213,13 @@ export const ChatDashboard: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-100">
-      <div className="w-80 border-r border-slate-800 flex flex-col bg-slate-900">
-        <div className="p-4 border-b border-slate-800 flex justify-between items-center">
+    <div className="flex h-[100dvh] bg-slate-950 text-slate-100 overflow-hidden">
+      <div
+        className={`${
+          selectedUser ? 'hidden md:flex' : 'flex'
+        } w-full md:w-80 border-r border-slate-800 flex-col bg-slate-900 h-full`}
+      >
+        <div className="p-4 border-b border-slate-800 flex justify-between items-center shrink-0">
           <div>
             <h2 className="font-bold text-white leading-tight">@{user?.username}</h2>
             <span className="flex items-center text-xs text-slate-400 mt-1">
@@ -231,13 +235,13 @@ export const ChatDashboard: React.FC = () => {
           </button>
         </div>
 
-        <div className="p-3">
+        <div className="p-3 shrink-0">
           <input
             type="text"
             placeholder="Search by username..."
             value={searchQuery}
             onChange={(e) => handleSearch(e.target.value)}
-            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
           />
         </div>
 
@@ -253,14 +257,14 @@ export const ChatDashboard: React.FC = () => {
                     setSearchResults([]);
                     setSearchQuery('');
                   }}
-                  className={`w-full text-left px-4 py-2 hover:bg-slate-800 flex items-center gap-2 transition ${
+                  className={`w-full text-left px-4 py-2.5 hover:bg-slate-800 flex items-center gap-2 transition ${
                     selectedUser?.id === u.id ? 'bg-slate-800 border-l-4 border-l-indigo-500 font-medium' : ''
                   }`}
                 >
-                  <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center font-bold text-xs text-white">
+                  <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center font-bold text-xs text-white shrink-0">
                     {u.username[0].toUpperCase()}
                   </div>
-                  <span className="text-sm">@{u.username}</span>
+                  <span className="text-sm truncate">@{u.username}</span>
                 </button>
               ))}
             </div>
@@ -278,7 +282,7 @@ export const ChatDashboard: React.FC = () => {
                   selectedUser?.id === conv.id ? 'bg-slate-800 border-l-4 border-l-indigo-500 font-medium' : ''
                 }`}
               >
-                <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center font-bold text-sm text-slate-200">
+                <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center font-bold text-sm text-slate-200 shrink-0">
                   {conv.username[0].toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -295,16 +299,31 @@ export const ChatDashboard: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col bg-slate-950 relative">
+      <div
+        className={`${
+          selectedUser ? 'flex' : 'hidden md:flex'
+        } flex-1 flex-col bg-slate-950 relative h-full w-full`}
+      >
         {selectedUser ? (
           <>
-            <div className="p-4 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center font-bold text-xs text-white">
+            <div className="p-3 md:p-4 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2 md:gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSelectedUser(null)}
+                  className="md:hidden p-1.5 -ml-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center font-bold text-xs text-white shrink-0">
                   {selectedUser.username[0].toUpperCase()}
                 </div>
                 <div>
-                  <h3 className="font-semibold text-white leading-tight">@{selectedUser.username}</h3>
+                  <h3 className="font-semibold text-white leading-tight text-sm md:text-base">
+                    @{selectedUser.username}
+                  </h3>
                   <p className="text-[11px] text-indigo-400 font-medium h-4 flex items-center">
                     {isPartnerTyping ? (
                       <span className="flex items-center gap-1">
@@ -324,7 +343,7 @@ export const ChatDashboard: React.FC = () => {
             <div
               ref={chatContainerRef}
               onScroll={handleScroll}
-              className="flex-1 overflow-y-auto no-scrollbar p-4 space-y-3"
+              className="flex-1 overflow-y-auto no-scrollbar p-3 md:p-4 space-y-3"
             >
               {messages.map((msg, index) => {
                 const isMine = msg.sender_id === user?.id;
@@ -336,8 +355,8 @@ export const ChatDashboard: React.FC = () => {
                 return (
                   <React.Fragment key={msg.id}>
                     {showDivider && (
-                      <div className="flex items-center justify-center my-4">
-                        <span className="bg-slate-900 border border-slate-800 text-slate-400 text-[11px] font-medium px-3 py-1 rounded-full shadow-sm select-none">
+                      <div className="flex items-center justify-center my-3 md:my-4">
+                        <span className="bg-slate-900 border border-slate-800 text-slate-400 text-[10px] md:text-[11px] font-medium px-2.5 py-0.5 md:px-3 md:py-1 rounded-full shadow-sm select-none">
                           {currentDateDivider}
                         </span>
                       </div>
@@ -345,15 +364,15 @@ export const ChatDashboard: React.FC = () => {
 
                     <div className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
                       <div
-                        className={`max-w-md rounded-2xl px-4 py-2 text-sm shadow-sm transition-all ${
+                        className={`max-w-[82%] sm:max-w-md rounded-2xl px-3.5 py-2 text-sm shadow-sm transition-all ${
                           isMine
                             ? 'bg-indigo-600 text-white rounded-br-none'
                             : 'bg-slate-800 border border-slate-700/80 text-slate-200 rounded-bl-none'
                         }`}
                       >
-                        <p className="leading-relaxed break-words">{msg.text}</p>
+                        <p className="leading-relaxed break-words text-[13px] md:text-sm">{msg.text}</p>
                         <span
-                          className={`text-[10px] block text-right mt-1 select-none ${
+                          className={`text-[9px] md:text-[10px] block text-right mt-1 select-none ${
                             isMine ? 'text-indigo-200' : 'text-slate-500'
                           }`}
                         >
@@ -371,34 +390,37 @@ export const ChatDashboard: React.FC = () => {
               <button
                 type="button"
                 onClick={scrollToBottom}
-                className="absolute bottom-20 right-8 bg-indigo-600 hover:bg-indigo-500 text-white p-2.5 rounded-full shadow-lg transition-all transform hover:scale-105 z-10"
+                className="absolute bottom-16 md:bottom-20 right-4 md:right-8 bg-indigo-600 hover:bg-indigo-500 text-white p-2 rounded-full shadow-lg transition-all transform hover:scale-105 z-10"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
                 </svg>
               </button>
             )}
 
-            <form onSubmit={handleSendMessage} className="p-4 border-t border-slate-800 bg-slate-900 flex gap-2">
+            <form
+              onSubmit={handleSendMessage}
+              className="p-3 md:p-4 border-t border-slate-800 bg-slate-900 flex gap-2 shrink-0"
+            >
               <input
                 type="text"
                 value={inputMessage}
                 onChange={handleInputChange}
                 placeholder={`Message @${selectedUser.username}...`}
-                className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
               />
               <button
                 type="submit"
                 disabled={!isConnected || !inputMessage.trim()}
-                className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-medium px-5 py-2 rounded-lg text-sm transition"
+                className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-medium px-4 md:px-5 py-2 rounded-lg text-sm transition shrink-0"
               >
                 Send
               </button>
             </form>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-slate-500">
-            <div className="w-16 h-16 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mb-4">
+          <div className="flex-1 flex flex-col items-center justify-center text-slate-500 p-4 text-center">
+            <div className="w-16 h-16 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mb-4 text-xl">
               💬
             </div>
             <p className="text-sm font-medium">Select a conversation or search a username to start chatting</p>

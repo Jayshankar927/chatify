@@ -50,17 +50,23 @@ export const ChatDashboard: React.FC = () => {
   const [searchResults, setSearchResults] = useState<User[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const [isPartnerTyping, setIsPartnerTyping] = useState(false);
 
   const socketRef = useRef<WebSocket | null>(null);
   const selectedUserRef = useRef<User | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const partnerTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:5000/ws';
 
   useEffect(() => {
     selectedUserRef.current = selectedUser;
+    setIsPartnerTyping(false);
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    if (partnerTypingTimeoutRef.current) clearTimeout(partnerTypingTimeoutRef.current);
   }, [selectedUser]);
 
   const scrollToBottom = () => {
@@ -102,9 +108,23 @@ export const ChatDashboard: React.FC = () => {
     ws.onerror = () => setIsConnected(false);
 
     ws.onmessage = (event) => {
-      const msg: Message = JSON.parse(event.data);
+      const data = JSON.parse(event.data);
       const currentSelected = selectedUserRef.current;
 
+      if (data.type === 'TYPING_STATUS') {
+        if (currentSelected && data.sender_id === currentSelected.id) {
+          setIsPartnerTyping(data.isTyping);
+          if (partnerTypingTimeoutRef.current) clearTimeout(partnerTypingTimeoutRef.current);
+          if (data.isTyping) {
+            partnerTypingTimeoutRef.current = setTimeout(() => {
+              setIsPartnerTyping(false);
+            }, 3000);
+          }
+        }
+        return;
+      }
+
+      const msg: Message = data;
       if (
         currentSelected &&
         (msg.sender_id === currentSelected.id || msg.recipient_id === currentSelected.id)
@@ -113,6 +133,9 @@ export const ChatDashboard: React.FC = () => {
           if (prev.some((m) => m.id === msg.id)) return prev;
           return [...prev, msg];
         });
+        if (msg.sender_id === currentSelected.id) {
+          setIsPartnerTyping(false);
+        }
       }
 
       loadConversations();
@@ -152,9 +175,33 @@ export const ChatDashboard: React.FC = () => {
     }
   };
 
+  const sendTypingStatus = (isTyping: boolean) => {
+    if (!selectedUser || !socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) return;
+    socketRef.current.send(
+      JSON.stringify({
+        type: 'TYPING_STATUS',
+        recipientId: selectedUser.id,
+        isTyping
+      })
+    );
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputMessage(e.target.value);
+    sendTypingStatus(true);
+
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      sendTypingStatus(false);
+    }, 2000);
+  };
+
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputMessage.trim() || !selectedUser || !socketRef.current) return;
+
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    sendTypingStatus(false);
 
     const payload = {
       recipientId: selectedUser.id,
@@ -207,10 +254,10 @@ export const ChatDashboard: React.FC = () => {
                     setSearchQuery('');
                   }}
                   className={`w-full text-left px-4 py-2 hover:bg-slate-800 flex items-center gap-2 transition ${
-                    selectedUser?.id === u.id ? 'bg-slate-800 border-l-4 border-l-indigo-500' : ''
+                    selectedUser?.id === u.id ? 'bg-slate-800 border-l-4 border-l-indigo-500 font-medium' : ''
                   }`}
                 >
-                  <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center font-bold text-xs">
+                  <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center font-bold text-xs text-white">
                     {u.username[0].toUpperCase()}
                   </div>
                   <span className="text-sm">@{u.username}</span>
@@ -231,7 +278,7 @@ export const ChatDashboard: React.FC = () => {
                   selectedUser?.id === conv.id ? 'bg-slate-800 border-l-4 border-l-indigo-500 font-medium' : ''
                 }`}
               >
-                <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center font-bold text-sm">
+                <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center font-bold text-sm text-slate-200">
                   {conv.username[0].toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -251,14 +298,30 @@ export const ChatDashboard: React.FC = () => {
       <div className="flex-1 flex flex-col bg-slate-950 relative">
         {selectedUser ? (
           <>
-            <div className="p-4 border-b border-slate-800 bg-slate-900/50 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center font-bold text-xs">
-                {selectedUser.username[0].toUpperCase()}
+            <div className="p-4 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center font-bold text-xs text-white">
+                  {selectedUser.username[0].toUpperCase()}
+                </div>
+                <div>
+                  <h3 className="font-semibold text-white leading-tight">@{selectedUser.username}</h3>
+                  <p className="text-[11px] text-indigo-400 font-medium h-4 flex items-center">
+                    {isPartnerTyping ? (
+                      <span className="flex items-center gap-1">
+                        <span>typing</span>
+                        <span className="flex gap-0.5">
+                          <span className="w-1 h-1 bg-indigo-400 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                          <span className="w-1 h-1 bg-indigo-400 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                          <span className="w-1 h-1 bg-indigo-400 rounded-full animate-bounce"></span>
+                        </span>
+                      </span>
+                    ) : null}
+                  </p>
+                </div>
               </div>
-              <h3 className="font-semibold text-white">@{selectedUser.username}</h3>
             </div>
 
-            <div 
+            <div
               ref={chatContainerRef}
               onScroll={handleScroll}
               className="flex-1 overflow-y-auto no-scrollbar p-4 space-y-3"
@@ -320,7 +383,7 @@ export const ChatDashboard: React.FC = () => {
               <input
                 type="text"
                 value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
+                onChange={handleInputChange}
                 placeholder={`Message @${selectedUser.username}...`}
                 className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
               />
